@@ -1,0 +1,221 @@
+#!/usr/bin/php
+<?php
+/**
+ * ** ProxySQL Munin Plugin **
+ *
+ * Author: Rafael Tovar <hola AT rafaeltovar.info>
+ *
+ * ** Configure **
+ * Write Munin configure file
+ * $ vi /etc/munin/plugin-conf.d/proxysql
+ * with following lines:
+ * -----------
+ * [proxysql]
+ * env.proxysql_admin_user     <PROXYSQL_ADMIN_USER>
+ * env.proxysql_admin_password <PROXYSQL_ADMIN_PASSWORD>
+ * env.proxysql_admin_port <PROXYSQL_ADMIN_PORT>
+ * -----------
+ **/
+
+//$argv[0]
+
+define("GAUGE", "GAUGE");
+define("RATE", "DERIVE");
+define("COUNTER", "COUNTER");
+define("CATEGORY", "proxysql");
+
+define("CONFIG_USER_KEY", "proxysql_admin_user");
+define("CONFIG_PASSWORD_KEY", "proxysql_admin_password");
+define("CONFIG_PORT_KEY", "proxysql_admin_port");
+define("CONFIG_HOST_KEY", "proxysql_admin_host");
+
+/* global variables */
+// get environment variables
+$proxysql_admin_config = [
+    'user'     => isset($_SERVER[CONFIG_USER_KEY])? $_SERVER[CONFIG_USER_KEY]: "admin",
+    'password' => isset($_SERVER[CONFIG_PASSWORD_KEY])? $_SERVER[CONFIG_PASSWORD_KEY]: "admin",
+    'port'     => isset($_SERVER[CONFIG_PORT_KEY])? $_SERVER[CONFIG_PORT_KEY]: 6032,
+    'host'     => isset($_SERVER[CONFIG_HOST_KEY])? $_SERVER[CONFIG_HOST_KEY]: "127.0.0.1"
+];
+
+// graphs collections
+$graphs = [];
+
+// parameter
+$parameter = count($argv)>1? $argv[1] : "";
+
+/* classes */
+interface MuninPrintable {
+    public function config();
+    public function value($value = null);
+}
+
+class Multigraph implements MuninPrintable {
+    public $key;
+    public $title;
+    public $info;
+    public $category;
+    public $graphs = [];
+
+    public function __construct($key, $title, $info, $category, $graphs = []) {
+        $this->key = $key;
+        $this->title = $title;
+        $this->info = $info;
+        $this->category = $category;
+        $this->graphs = $graphs;
+    }
+
+    public function getGraphs() { return $this->graphs; }
+
+    public function config(){
+        $this->value();
+        echo sprintf("graph_title %s\ngraph_info %s\ngraph_category %s\n",
+                    $this->title, $this->info, $this->category);
+    }
+
+    public function value($value = null) {
+        echo sprintf("multigraph %s\n", $this->key);
+    }
+}
+
+class Graph implements MuninPrintable {
+    public $key;
+    public $label;
+    public $type;
+    public $min;
+
+    public function __construct($key, $label, $type, $min) {
+        $this->key = $key;
+        $this->label = $label;
+        $this->type = $type;
+        $this->min = $min;
+    }
+
+    public function config() {
+        echo sprintf(
+                implode([$this->key.".label %s\n", $this->key.".type %s\n", $this->key.".min %s\n"], ""),
+                $this->label, $this->type, $this->min
+            );
+    }
+
+    public function value($value = null) {
+        echo sprintf("%s.value %s\n", $this->key, $value);
+    }
+}
+
+
+/* objects */
+// global
+$graphs[] = new Multigraph('proxysql_stats_global', "Proxysql global stats", "Proxysql global stats", CATEGORY,
+                    [ new Graph('active_transactions', "Active transactions", GAUGE, 0),
+                      new Graph('query_processor_time_nsec', "Query processor (nsec)", RATE, 0),
+                      new Graph('questions', "Questions", RATE, 0),
+                      new Graph('slow_queries', "Slow queries", RATE, 0)
+                ]);
+// global clients connections
+$graphs[] = new Multigraph('proxysql_client_connections', "Proxysql client connections", "Proxysql client connections", CATEGORY,
+                    [ new Graph('client_connections_aborted', "aborted", RATE, 0),
+                      new Graph('client_connections_connected', "connected", RATE, 0),
+                      new Graph('client_connections_created', "created", RATE, 0),
+                      new Graph('client_connections_non_idle', "non idle", GAUGE, 0)
+                ]);
+// global connection pool
+$graphs[] = new Multigraph('proxysql_connection_pool', "Proxysql connection pool", "Proxysql connection pool", CATEGORY,
+                    [ new Graph('connpool_get_conn_failure', "failure", RATE, 0),
+                      new Graph('connpool_get_conn_immediate', "immediate", RATE, 0),
+                      new Graph('connpool_get_conn_success', "success", RATE, 0),
+                      new Graph('connpool_memory_bytes', "memory bytes", GAUGE, 0)
+                ]);
+// global mysql
+$graphs[] = new Multigraph('proxysql_mysql', "Proxysql MySQL stats", "Proxysql MySQL buffers and sessions", CATEGORY,
+                    [ new Graph('mysql_backend_buffers_bytes', "Backend buffers bytes", GAUGE, 0),
+                      new Graph('mysql_frontend_buffers_bytes', "Frontend buffers bytes", GAUGE, 0),
+                      new Graph('mysql_session_internal_bytes', "Session internal bytes", GAUGE, 0)
+                ]);
+// global servers connections
+$graphs[] = new Multigraph('proxysql_server_connections', "Proxysql server connections", "Proxysql server connections", CATEGORY,
+                    [ new Graph('server_connections_aborted', "aborted", RATE, 0),
+                      new Graph('server_connections_connected', "connected", GAUGE, 0),
+                      new Graph('server_connections_created', "created", RATE, 0)
+                ]);
+// counters
+$graphs[] = new Multigraph('proxysql_stats_counters', "Proxysql command counters", "ProxySQL metrics that we fetch by querying stats_mysql_commands_counters", CATEGORY,
+                    [ new Graph('query_sum_time_us', "Sum time", COUNTER, 0),
+                      new Graph('query_count', "Query count", COUNTER, 0)
+                ]);
+// connections pools stats
+/*
+$graphs[] = new Multigraph('proxysql_connection_pool_stats', "Proxysql connection pool stats", "ProxySQL metrics that we fetch by querying stats_mysql_connection_pool", CATEGORY,
+                    [ new Graph('pool_conn_used', "connections used", GAUGE, 0),
+                      new Graph('pool_conn_free', "connections free", GAUGE, 0),
+                      new Graph('pool_conn_ok', "connections ok", RATE, 0),
+                      new Graph('pool_conn_error', "connections error", RATE, 0),
+                      new Graph('pool_queries', "queries", RATE, 0),
+                      new Graph('pool_data_sent', "Bytes data sent", RATE, 0),
+                      new Graph('pool_data_recv', "Bytes data received", RATE, 0),
+                      new Graph('pool_latency_ms', "Latency ms", GAUGE, 0)
+                ]);
+*/
+/* functions */
+
+function config($graphs) {
+    foreach($graphs as $gr) {
+        $gr->config();
+        foreach($gr->getGraphs() as $g)
+            $g->config();
+    }
+}
+
+function values($graphs, $admin_config) {
+
+    $client = new mysqli($admin_config['host'], $admin_config['user'], $admin_config['password'], '', $admin_config['port']);
+    $data = array_merge(globals($client), counters($client));
+
+    // print values
+    foreach($graphs as $gr) {
+        $gr->value();
+        foreach($gr->getGraphs() as $g)
+            $g->value($data[$g->key]);
+    }
+}
+
+function globals($client) {
+    $q = $client->query("SELECT * FROM stats.stats_mysql_global");
+    //$r = normalize_mysqli_result($q);
+
+    $results = $q->fetch_all(MYSQLI_ASSOC);
+    $results_keys = array_map(function($a) { return strtolower($a['Variable_Name']);}, $results);
+    $results_values = array_map(function($a) { return $a['Variable_Value'];}, $results);
+    $r = array_combine($results_keys , $results_values);
+    return $r;
+}
+
+function counters($client) {
+    $q = $client->query("SELECT SUM(Total_Time_us) AS query_sum_time_us, SUM(Total_cnt) AS query_count FROM stats.stats_mysql_commands_counters");
+    //$r = normalize_mysqli_result($q);
+    $r = $q->fetch_all(MYSQLI_ASSOC);
+    $r = $r[0];
+    return $r;
+}
+
+// TODO
+function pool_stats($client) {
+    $q = $client->query("SELECT * FROM stats_mysql_connection_pool");
+    $r = $q->fetch_all(MYSQLI_ASSOC);
+    print_r($r);
+}
+
+switch($parameter):
+    case "config":
+        config($graphs);
+        break;
+    case "suggest":
+        //check_connect($proxysql_admin_config);
+        echo "yes";
+        break;
+    case "autoconf":
+        echo "yes";
+        break;
+    default:
+        values($graphs, $proxysql_admin_config);
+endswitch;
