@@ -143,19 +143,11 @@ $graphs[] = new Multigraph('proxysql_stats_counters', "Proxysql command counters
                     [ new Graph('query_sum_time_us', "Sum time", COUNTER, 0),
                       new Graph('query_count', "Query count", COUNTER, 0)
                 ]);
-// connections pools stats
-/*
-$graphs[] = new Multigraph('proxysql_connection_pool_stats', "Proxysql connection pool stats", "ProxySQL metrics that we fetch by querying stats_mysql_connection_pool", CATEGORY,
-                    [ new Graph('pool_conn_used', "connections used", GAUGE, 0),
-                      new Graph('pool_conn_free', "connections free", GAUGE, 0),
-                      new Graph('pool_conn_ok', "connections ok", RATE, 0),
-                      new Graph('pool_conn_error', "connections error", RATE, 0),
-                      new Graph('pool_queries', "queries", RATE, 0),
-                      new Graph('pool_data_sent', "Bytes data sent", RATE, 0),
-                      new Graph('pool_data_recv', "Bytes data received", RATE, 0),
-                      new Graph('pool_latency_ms', "Latency ms", GAUGE, 0)
+// connections pools latency
+$graphs[] = new Multigraph('proxysql_connection_pool_latency', "Proxysql connection pool latency", "ProxySQL latency metric that we fetch by querying stats_mysql_connection_pool", CATEGORY,
+                    [ new Graph('pool_latency_us', "Latency us", GAUGE, 0)
                 ]);
-*/
+
 /* functions */
 
 function config($graphs) {
@@ -170,6 +162,7 @@ function values($graphs, $admin_config) {
 
     $client = new mysqli($admin_config['host'], $admin_config['user'], $admin_config['password'], '', $admin_config['port']);
     $data = array_merge(globals($client), counters($client));
+    $data = array_merge($data, pool_stats($client));
 
     // print values
     foreach($graphs as $gr) {
@@ -200,9 +193,10 @@ function counters($client) {
 
 // TODO
 function pool_stats($client) {
-    $q = $client->query("SELECT * FROM stats_mysql_connection_pool");
+    $q = $client->query("SELECT Latency_us AS pool_latency_us FROM stats_mysql_connection_pool");
     $r = $q->fetch_all(MYSQLI_ASSOC);
-    print_r($r);
+    $r = $r[0];
+    return $r;
 }
 
 switch($parameter):
