@@ -145,7 +145,7 @@ $graphs[] = new Multigraph('proxysql_stats_counters', "Proxysql command counters
                 ]);
 // connections pools latency
 $graphs[] = new Multigraph('proxysql_connection_pool_latency', "Proxysql connection pool latency", "ProxySQL latency metric that we fetch by querying stats_mysql_connection_pool", CATEGORY,
-                    [ new Graph('pool_latency_us', "Latency μs", GAUGE, 0)
+                    [ new Graph('pool_latency_us', "Latency us", GAUGE, 0)
                 ]);
 
 /* functions */
