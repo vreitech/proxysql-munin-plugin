@@ -147,6 +147,18 @@ $graphs[] = new Multigraph('proxysql_stats_counters', "Proxysql command counters
 $graphs[] = new Multigraph('proxysql_connection_pool_latency', "Proxysql connection pool latency", "ProxySQL latency metric that we fetch by querying stats_mysql_connection_pool", CATEGORY,
                     [ new Graph('pool_latency_us', "Latency us", GAUGE, 0)
                 ]);
+// rules
+$graphs[] = new Multigraph('rule_hit_counters', "Proxysql rule hits", "", CATEGORY,
+                    [ new Graph('rule_1', "Cut BE.WF_NEW on master", COUNTER, 0),
+                      new Graph('rule_2', "Cut BE.WF_NEW on slave", COUNTER, 0),
+                      new Graph('rule_3', "Cut BE.WF_STATUS_ID=1 on master", COUNTER, 0),
+                      new Graph('rule_4', "Cut BE.WF_STATUS_ID=1 on slave", COUNTER, 0),
+                      new Graph('rule_5', "FOR UPDATE force master", COUNTER, 0),
+                      new Graph('rule_6', "Non select force master", COUNTER, 0),
+                      new Graph('rule_7', "SELECT on master", COUNTER, 0),
+                      new Graph('rule_8', "SELECT on slave", COUNTER, 0),
+                      new Graph('rule_9', "SELECT ORDER BY BE\.TIMESTAMP_X force slave", COUNTER, 0),
+                ]);
 
 /* functions */
 
@@ -161,8 +173,7 @@ function config($graphs) {
 function values($graphs, $admin_config) {
 
     $client = new mysqli($admin_config['host'], $admin_config['user'], $admin_config['password'], '', $admin_config['port']);
-    $data = array_merge(globals($client), counters($client));
-    $data = array_merge($data, pool_stats($client));
+    $data = array_merge(globals($client), counters($client), pool_stats($client), query_rules($client));
 
     // print values
     foreach($graphs as $gr) {
@@ -191,12 +202,21 @@ function counters($client) {
     return $r;
 }
 
-// TODO
 function pool_stats($client) {
     $q = $client->query("SELECT Latency_us AS pool_latency_us FROM stats_mysql_connection_pool");
     $r = $q->fetch_all(MYSQLI_ASSOC);
     $r = $r[0];
     return $r;
+}
+
+function query_rules($client) {
+   $q = $client->query("SELECT * FROM stats_mysql_query_rules");
+   $r = $q->fetch_all(MYSQLI_ASSOC);
+   $result = array();
+   foreach ($r as $v) {
+        $result["rule_".$v["rule_id"]] = $v["hits"];
+   }
+   return $result;
 }
 
 switch($parameter):
